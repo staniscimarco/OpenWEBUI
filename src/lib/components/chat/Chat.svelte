@@ -32,7 +32,8 @@
 		temporaryChatEnabled,
 		mobile,
 		showOverview,
-		chatTitle
+		chatTitle,
+		showArtifacts
 	} from '$lib/stores';
 	import {
 		convertMessagesToHistory,
@@ -52,7 +53,7 @@
 		updateChatById
 	} from '$lib/apis/chats';
 	import { generateOpenAIChatCompletion } from '$lib/apis/openai';
-	import { processWebSearch } from '$lib/apis/retrieval';
+	import { processWeb, processWebSearch, processYoutubeVideo } from '$lib/apis/retrieval';
 	import { createOpenAITextStream } from '$lib/apis/streaming';
 	import { queryMemory } from '$lib/apis/memories';
 	import { getAndUpdateUserLocation, getUserSettings } from '$lib/apis/users';
@@ -198,6 +199,20 @@
 
 				eventConfirmationTitle = data.title;
 				eventConfirmationMessage = data.message;
+			} else if (type === 'execute') {
+				eventCallback = cb;
+
+				try {
+					// Use Function constructor to evaluate code in a safer way
+					const asyncFunction = new Function(`return (async () => { ${data.code} })()`);
+					const result = await asyncFunction(); // Await the result of the async function
+
+					if (cb) {
+						cb(result);
+					}
+				} catch (error) {
+					console.error('Error executing code:', error);
+				}
 			} else if (type === 'input') {
 				eventCallback = cb;
 
@@ -307,11 +322,84 @@
 		$socket?.off('chat-events');
 	});
 
+	// File upload functions
+
+	const uploadWeb = async (url) => {
+		console.log(url);
+
+		const fileItem = {
+			type: 'doc',
+			name: url,
+			collection_name: '',
+			status: 'uploading',
+			url: url,
+			error: ''
+		};
+
+		try {
+			files = [...files, fileItem];
+			const res = await processWeb(localStorage.token, '', url);
+
+			if (res) {
+				fileItem.status = 'uploaded';
+				fileItem.collection_name = res.collection_name;
+				fileItem.file = {
+					...res.file,
+					...fileItem.file
+				};
+
+				files = files;
+			}
+		} catch (e) {
+			// Remove the failed doc from the files array
+			files = files.filter((f) => f.name !== url);
+			toast.error(JSON.stringify(e));
+		}
+	};
+
+	const uploadYoutubeTranscription = async (url) => {
+		console.log(url);
+
+		const fileItem = {
+			type: 'doc',
+			name: url,
+			collection_name: '',
+			status: 'uploading',
+			context: 'full',
+			url: url,
+			error: ''
+		};
+
+		try {
+			files = [...files, fileItem];
+			const res = await processYoutubeVideo(localStorage.token, url);
+
+			if (res) {
+				fileItem.status = 'uploaded';
+				fileItem.collection_name = res.collection_name;
+				fileItem.file = {
+					...res.file,
+					...fileItem.file
+				};
+				files = files;
+			}
+		} catch (e) {
+			// Remove the failed doc from the files array
+			files = files.filter((f) => f.name !== url);
+			toast.error(e);
+		}
+	};
+
 	//////////////////////////
 	// Web functions
 	//////////////////////////
 
 	const initNewChat = async () => {
+		await showControls.set(false);
+		await showCallOverlay.set(false);
+		await showOverview.set(false);
+		await showArtifacts.set(false);
+
 		if ($page.url.pathname.includes('/c/')) {
 			window.history.replaceState(history.state, '', `/`);
 		}
@@ -342,26 +430,42 @@
 			selectedModels = [''];
 		}
 
+		if ($page.url.searchParams.get('youtube')) {
+			uploadYoutubeTranscription(
+				`https://www.youtube.com/watch?v=${$page.url.searchParams.get('youtube')}`
+			);
+		}
+
 		if ($page.url.searchParams.get('web-search') === 'true') {
 			webSearchEnabled = true;
 		}
 
-		if ($page.url.searchParams.get('q')) {
-			prompt = $page.url.searchParams.get('q') ?? '';
-			selectedToolIds = ($page.url.searchParams.get('tool_ids') ?? '')
-				.split(',')
+		if ($page.url.searchParams.get('tools')) {
+			selectedToolIds = $page.url.searchParams
+				.get('tools')
+				?.split(',')
 				.map((id) => id.trim())
 				.filter((id) => id);
-
-			if (prompt) {
-				await tick();
-				submitPrompt(prompt);
-			}
+		} else if ($page.url.searchParams.get('tool-ids')) {
+			selectedToolIds = $page.url.searchParams
+				.get('tool-ids')
+				?.split(',')
+				.map((id) => id.trim())
+				.filter((id) => id);
 		}
 
 		if ($page.url.searchParams.get('call') === 'true') {
 			showCallOverlay.set(true);
 			showControls.set(true);
+		}
+
+		if ($page.url.searchParams.get('q')) {
+			prompt = $page.url.searchParams.get('q') ?? '';
+
+			if (prompt) {
+				await tick();
+				submitPrompt(prompt);
+			}
 		}
 
 		selectedModels = selectedModels.map((modelId) =>
@@ -1919,7 +2023,17 @@
 		{/if}
 
 		<Navbar
-			{chat}
+			chat={{
+				id: $chatId,
+				chat: {
+					title: $chatTitle,
+					models: selectedModels,
+					system: $settings.system ?? undefined,
+					params: params,
+					history: history,
+					timestamp: Date.now()
+				}
+			}}
 			title={$chatTitle}
 			bind:selectedModels
 			shareEnabled={!!history.currentId}
@@ -2034,6 +2148,15 @@
 								transparentBackground={$settings?.backgroundImageUrl ?? false}
 								{stopResponse}
 								{createMessagePair}
+								on:upload={async (e) => {
+									const { type, data } = e.detail;
+
+									if (type === 'web') {
+										await uploadWeb(data);
+									} else if (type === 'youtube') {
+										await uploadYoutubeTranscription(data);
+									}
+								}}
 								on:submit={async (e) => {
 									if (e.detail) {
 										prompt = '';
@@ -2069,6 +2192,15 @@
 							transparentBackground={$settings?.backgroundImageUrl ?? false}
 							{stopResponse}
 							{createMessagePair}
+							on:upload={async (e) => {
+								const { type, data } = e.detail;
+
+								if (type === 'web') {
+									await uploadWeb(data);
+								} else if (type === 'youtube') {
+									await uploadYoutubeTranscription(data);
+								}
+							}}
 							on:submit={async (e) => {
 								if (e.detail) {
 									prompt = '';

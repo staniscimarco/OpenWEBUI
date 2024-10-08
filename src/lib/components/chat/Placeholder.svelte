@@ -186,7 +186,7 @@
 				</div>
 
 				<div
-					class="text-base font-normal lg:translate-x-6 lg:max-w-3xl w-full py-3 {atSelectedModel
+					class="text-base font-normal xl:translate-x-6 lg:max-w-3xl w-full py-3 {atSelectedModel
 						? 'mt-2'
 						: ''}"
 				>
@@ -204,6 +204,9 @@
 						{stopResponse}
 						{createMessagePair}
 						placeholder={$i18n.t('How can I help you today?')}
+						on:upload={(e) => {
+							dispatch('upload', e.detail);
+						}}
 						on:submit={(e) => {
 							dispatch('submit', e.detail);
 						}}

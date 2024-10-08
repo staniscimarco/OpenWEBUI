@@ -14,7 +14,10 @@
 		pinnedChats,
 		scrollPaginationEnabled,
 		currentChatPage,
-		temporaryChatEnabled
+		temporaryChatEnabled,
+		showArtifacts,
+		showOverview,
+		showControls
 	} from '$lib/stores';
 	import { onMount, getContext, tick } from 'svelte';
 

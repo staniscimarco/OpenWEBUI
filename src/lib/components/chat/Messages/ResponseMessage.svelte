@@ -479,7 +479,7 @@
 										id={message.id}
 										content={message.content}
 										floatingButtons={message?.done}
-										save={true}
+										save={!readOnly}
 										{model}
 										on:update={(e) => {
 											const { raw, oldContent, newContent } = e.detail;
@@ -490,15 +490,21 @@
 
 											dispatch('update');
 										}}
-										on:explain={(e) => {
-											dispatch('submit', {
-												parentId: message.id,
-												prompt:
-													`Explain this section to me in more detail\n\n` +
-													'```\n' +
-													e.detail +
-													'\n```'
-											});
+										on:select={(e) => {
+											const { type, content } = e.detail;
+
+											if (type === 'explain') {
+												dispatch('submit', {
+													parentId: message.id,
+													prompt: `Explain this section to me in more detail\n\n\`\`\`\n${content}\n\`\`\``
+												});
+											} else if (type === 'ask') {
+												const input = e.detail?.input ?? '';
+												dispatch('submit', {
+													parentId: message.id,
+													prompt: `\`\`\`\n${content}\n\`\`\`\n${input}`
+												});
+											}
 										}}
 									/>
 								{/if}

@@ -351,3 +351,20 @@ WEBSOCKET_REDIS_URL = os.environ.get("WEBSOCKET_REDIS_URL", "redis://localhost:6
 AUDIT_LOG_RETENTION_PERIOD = os.getenv("AUDIT_LOG_RETENTION_PERIOD", "P30D")
 AUDIT_LOGS_FILE_PATH = f"{DATA_DIR}/audit.log"
 AUDIT_LOG_FILE_ROTATION_SIZE = os.getenv("AUDIT_LOG_FILE_ROTATION_SIZE", "10 MB")
+
+
+AIOHTTP_CLIENT_TIMEOUT = os.environ.get("AIOHTTP_CLIENT_TIMEOUT", "")
+
+if AIOHTTP_CLIENT_TIMEOUT == "":
+    AIOHTTP_CLIENT_TIMEOUT = None
+else:
+    try:
+        AIOHTTP_CLIENT_TIMEOUT = int(AIOHTTP_CLIENT_TIMEOUT)
+    except Exception:
+        AIOHTTP_CLIENT_TIMEOUT = 300
+
+####################################
+# OFFLINE_MODE
+####################################
+
+OFFLINE_MODE = os.environ.get("OFFLINE_MODE", "false").lower() == "true"
